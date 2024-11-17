@@ -1,7 +1,10 @@
 
 from matplotlib.pyplot import axis
+import matplotlib.pyplot as plt
 import streamlit as st  # streamlit library
 import pandas as pd  # pandas library
+import plotly.express as px
+import numpy as np
 import yfinance as yf  # yfinance library
 import datetime  # datetime library
 from datetime import date
@@ -12,6 +15,8 @@ from prophet import Prophet  # prophet library
 from prophet.plot import plot_plotly
 import time  # time library
 from streamlit_option_menu import option_menu  # select_options library
+from keras.models import load_model
+from sklearn.preprocessing import MinMaxScaler
 
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 
@@ -210,64 +215,156 @@ elif(selected == 'Real-Time Stock Price'):  # if user selects 'Real-Time Stock P
 
 # Stock Price Prediction Section Starts Here
 elif(selected == 'Stock Prediction'):  # if user selects 'Stock Prediction'
-    st.subheader("Stock Prediction")
+    stocks_csv_path = 'StockStreamTickersData.csv'  # Replace with your CSV file path
+    stocks_df = pd.read_csv(stocks_csv_path)
 
-    tickers = stock_df["Company Name"]  # get company names from csv file
-    # dropdown for selecting company
-    a = st.selectbox('Pick a Company', tickers)
-    with st.spinner('Loading...'):  # spinner while loading
-             time.sleep(2)
-    dict_csv = pd.read_csv('StockStreamTickersData.csv', header=None, index_col=0).to_dict()[1]  # read csv file
-    symb_list = []  # list for storing symbols
-    val = dict_csv.get(a)  # get symbol from csv file
-    symb_list.append(val)  # append symbol to list
-    if(a == ""):  # if user doesn't select any company
-        st.write("Enter a Stock Name")  # display message
-    else:  # if user selects a company
-        # download data from yfinance
-        data = yf.download(symb_list, start=start, end=end)
-        data.reset_index(inplace=True)  # reset index
-        st.subheader('Raw Data of {}'.format(a))  # display raw data
-        st.write(data)  # display data
+    # Check if required columns exist in the CSV
+    if 'Company Name' not in stocks_df.columns or 'Symbol' not in stocks_df.columns:
+        st.error("The CSV file must have 'Stock Name' and 'Stock Code' columns.")
+    else:
+        # Map stock names to their codes
+        stock_dict = dict(zip(stocks_df['Company Name'], stocks_df['Symbol']))
 
-        def plot_raw_data():  # function for plotting raw data
-            fig = go.Figure()  # create figure
-            fig.add_trace(go.Scatter(  # add scatter plot
-                x=data['Date'], y=data['Open'], name="stock_open"))  # x-axis: date, y-axis: open
-            fig.add_trace(go.Scatter(  # add scatter plot
-                x=data['Date'], y=data['Close'], name="stock_close"))  # x-axis: date, y-axis: close
-            fig.layout.update(  # update layout
-                title_text='Time Series Data of {}'.format(a), xaxis_rangeslider_visible=True)  # title, x-axis: rangeslider
-            st.plotly_chart(fig)  # display plotly chart
+        # Add a dropdown to select a stock
+        selected_stock_name = st.selectbox(
+            "Select a stock to analyze",
+            options=list(stock_dict.keys()),
+            format_func=lambda x: f"{x} ({stock_dict[x]})"
+        )
 
-        plot_raw_data()  # plot raw data
-        # slider for selecting number of years
-        n_years = st.slider('Years of prediction:', 1, 4)
-        period = n_years * 365  # calculate number of days
+        # Retrieve the selected stock code
+    stock_code = stock_dict[selected_stock_name]
+    st.write(f"Selected Stock: {selected_stock_name} ({stock_code})")
+    # Date range for fetching data
+    start = '2010-01-01'
+    end = '2023-12-31'
 
-        # Predict forecast with Prophet
-        # create dataframe for training data
-        df_train = data[['Date', 'Close']]
-        df_train = df_train.rename(
-            columns={"Date": "ds", "Close": "y"})  # rename columns
+    # Load pre-trained model
+    model = load_model('keras_model.h5')
 
-        m = Prophet()  # create object for prophet
-        m.fit(df_train)  # fit data to prophet
-        future = m.make_future_dataframe(
-            periods=period)  # create future dataframe
-        forecast = m.predict(future)  # predict future dataframe
+    # Fetch stock data
+    st.subheader(f"Analysis for {selected_stock_name} ({stock_code})")
+    df = yf.download(stock_code, start=start, end=end)
 
-        # Show and plot forecast
-        st.subheader('Forecast Data of {}'.format(a))  # display forecast data
-        st.write(forecast)  # display forecast data
+    if df.empty:
+        st.write(f"No data found for {stock_code}. Please check the ticker symbol.")
+    else:
+        # Display basic stats
+        st.write(df.describe())
 
-        st.subheader(f'Forecast plot for {n_years} years')  # display message
-        fig1 = plot_plotly(m, forecast)  # plot forecast
-        st.plotly_chart(fig1)  # display plotly chart
+        # Plot Closing Prices
+        st.subheader('Closing Price Vs Time')
+        fig = plt.figure(figsize=(12, 6))
+        plt.plot(df['Close'], label='Closing Price')
+        plt.legend()
+        st.pyplot(fig)
 
-        st.subheader("Forecast components of {}".format(a))  # display message
-        fig2 = m.plot_components(forecast)  # plot forecast components
-        st.write(fig2)  # display plotly chart
+        # Add Moving Averages
+        st.subheader('Closing Price Vs Time with 100MA & 200MA')
+        ma100 = df['Close'].rolling(100).mean()
+        ma200 = df['Close'].rolling(200).mean()
+        fig = plt.figure(figsize=(12, 6))
+        plt.plot(df['Close'], label='Closing Price')
+        plt.plot(ma100, label='100-Day MA', color='red')
+        plt.plot(ma200, label='200-Day MA', color='green')
+        plt.legend()
+        st.pyplot(fig)
+
+        # Prepare data for prediction
+        data_training = pd.DataFrame(df['Close'][0:int(len(df) * 0.70)])
+        data_testing = pd.DataFrame(df['Close'][int(len(df) * 0.70):])
+
+        # Scale the data (Use training scaler fitted on AAPL)
+        scaler = MinMaxScaler(feature_range=(0, 1))
+        scaled_training = scaler.fit_transform(data_training)
+        scaled_testing = scaler.transform(pd.concat([data_training.tail(100), data_testing]))
+
+        x_test = []
+        y_test = []
+        for i in range(100, scaled_testing.shape[0]):
+            x_test.append(scaled_testing[i-100:i])
+            y_test.append(scaled_testing[i, 0])
+
+        x_test = np.array(x_test)
+        y_test = np.array(y_test)
+
+        # Make predictions
+        y_predicted = model.predict(x_test)
+
+        # Rescale predictions to original values
+        scale_factor = 1 / scaler.scale_[0]
+        y_predicted = y_predicted * scale_factor
+        y_test = y_test * scale_factor
+
+        # Plot Original vs Predicted
+        st.subheader('Original Vs Prediction')
+        fig = plt.figure(figsize=(12, 6))
+        plt.plot(y_test, label='Original Price', color='blue')
+        plt.plot(y_predicted, label='Predicted Price', color='orange')
+        plt.legend()
+        st.pyplot(fig)
+        dates = data_testing.index[100:]
+        min_length = min(len(dates), len(y_test), len(y_predicted))
+        dates = dates[:min_length]
+        y_test = y_test[:min_length]
+        y_predicted = y_predicted[:min_length]
+
+        # Create DataFrame for comparison
+        comparison_df = pd.DataFrame({
+            'Date': dates,
+            'Actual Price': y_test.flatten(),
+            'Predicted Price': y_predicted.flatten(),
+        })
+        comparison_df['Percentage Error'] = abs(
+            (comparison_df['Actual Price'] - comparison_df['Predicted Price']) / comparison_df['Actual Price'] * 100
+        )
+
+        # Display the comparison table
+        st.subheader('Prediction vs Actual Prices')
+        st.write(comparison_df)
+        st.subheader('Actual vs Predicted Price Chart')
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.plot(comparison_df['Date'], comparison_df['Actual Price'], label='Actual Price', color='blue')
+        ax.plot(comparison_df['Date'], comparison_df['Predicted Price'], label='Predicted Price', color='red')
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Price')
+        ax.set_title('Actual vs Predicted Price Over Time')
+        ax.legend()
+
+        # Rotate dates for better readability
+        plt.xticks(rotation=45)
+        st.pyplot(fig)
+        from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
+        mape = mean_absolute_percentage_error(y_test, y_predicted) * 100
+        mse = mean_squared_error(y_test, y_predicted)
+        rmse = np.sqrt(mse)
+
+        #Dividend Analysis 
+        stock = yf.Ticker(stock_code)
+        fundamentals = {
+        "Previous Close": stock.info.get("previousClose"),
+        "Open": stock.info.get("open"),
+        "52-Week High": stock.info.get("fiftyTwoWeekHigh"),
+        "52-Week Low": stock.info.get("fiftyTwoWeekLow"),
+        "Market Cap": stock.info.get("marketCap"),
+        "Dividend Yield (%)": stock.info.get("dividendYield") * 100 if stock.info.get("dividendYield") else "N/A",
+        "P/E Ratio (TTM)": stock.info.get("trailingPE"),
+        "P/B Ratio": stock.info.get("priceToBook"),
+        "EPS (TTM)": stock.info.get("trailingEps"),
+        "Beta": stock.info.get("beta"),
+        "Profit Margins (%)": stock.info.get("profitMargins") * 100 if stock.info.get("profitMargins") else "N/A",}
+
+        fundamentals_df = pd.DataFrame(fundamentals.items(), columns=["Parameter", "Value"])
+        fundamentals_df = pd.DataFrame(fundamentals.items(), columns=["Parameter", "Value"])
+
+    # Display fundamentals table
+        st.subheader(f"Fundamental Parameters of {stock_code}")
+        st.write(fundamentals_df)
+
+        st.subheader('Model Accuracy Metrics')
+        st.write(f"Mean Absolute Percentage Error (MAPE): {mape:.2f}%")
+        st.write(f"Mean Squared Error (MSE): {mse:.2f}")
+        st.write(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
 
 # Stock Price Prediction Section Ends Here
 
@@ -281,7 +378,7 @@ elif(selected == 'About'):
     }
     </style>
     """, unsafe_allow_html=True)
-    
-    st.markdown('<p class="big-font">StockStream is a web application that allows users to visualize Stock Performance Comparison, Real-Time Stock Prices and Stock Price Prediction. This application is developed using Streamlit. Streamlit is an open source app framework in Python language.  </p>', unsafe_allow_html=True)
+    st.image("Images/R.png", caption="StockStream - Visualize, Predict, and Analyze", width=300)
+    st.markdown('<p class="big-font">StockStream is a web application that allows users to visualize Stock Performance Comparison, Real-Time Stock Prices and Stock Price Prediction. This application is built by Daksh Jain , Sehal Saxena and Mayer Goyal students of Jaypee Institute of Information Technology as their minor project .  </p>', unsafe_allow_html=True)
  
  
