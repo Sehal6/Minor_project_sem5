@@ -3,11 +3,18 @@ from matplotlib.pyplot import axis
 import matplotlib.pyplot as plt
 import streamlit as st  # streamlit library
 import pandas as pd  # pandas library
+import requests
 import plotly.express as px
 import numpy as np
 import yfinance as yf  # yfinance library
 import datetime  # datetime library
 from datetime import date
+from bs4 import BeautifulSoup as soup
+from urllib.request import urlopen
+from newspaper import Article
+import io
+import nltk
+from PIL import Image
 from plotly import graph_objs as go  # plotly library
 from plotly.subplots import make_subplots
 from prophet import Prophet  # prophet library
@@ -19,6 +26,111 @@ from keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
 
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+def fetch_business_news():
+    site = 'https://news.google.com/news/rss/headlines/section/topic/BUSINESS'
+    op = urlopen(site)
+    rd = op.read()
+    op.close()
+    sp_page = soup(rd, 'xml')
+    news_list = sp_page.find_all('item')
+    return news_list
+
+
+def fetch_news_search_topic(topic):
+    site = 'https://news.google.com/rss/search?q={}'.format(topic)
+    op = urlopen(site)
+    rd = op.read()
+    op.close()
+    sp_page = soup(rd, 'xml')
+    news_list = sp_page.find_all('item')
+    return news_list
+# Fetch real-time data
+def fetch_live_prices():
+    # Tickers for desired commodities and indices
+    tickers = {
+        "Gold (GC=F)": ("GC=F", "USD", "per oz"),
+        "Silver (SI=F)": ("SI=F", "USD", "per oz"),
+        "Crude Oil (CL=F)": ("CL=F", "USD", "per barrel"),
+        "Nifty 50 (^NSEI)": ("^NSEI", "INR", "points"),
+        "Sensex (^BSESN)": ("^BSESN", "INR", "points"),
+        "USD/INR (USDINR=X)": ("USDINR=X", "INR", "per USD"),
+    }
+    
+    live_data = {}
+    for name, details in tickers.items():
+        ticker, currency, unit = details  # Explicit unpacking
+        try:
+            stock = yf.Ticker(ticker)
+            price = stock.history(period="1d")['Close'].iloc[-1]
+            live_data[name] = f"{currency} {price:,.2f} {unit}"
+        except Exception as e:
+            live_data[name] = "Data Unavailable"
+    return live_data
+
+def fetch_news_poster(poster_link):
+    try:
+        u = urlopen(poster_link)
+        raw_data = u.read()
+        image = Image.open(io.BytesIO(raw_data))
+        st.image(image, use_column_width=True)
+    except:
+        image = Image.open('./Meta/no_image.jpg')
+        st.image(image, use_column_width=True)
+
+
+def display_news(list_of_news, news_quantity):
+    c = 0
+    for news in list_of_news:
+        c += 1
+        st.write(f"**({c}) {news.title.text}**")  # News title
+        news_data = Article(news.link.text)
+        try:
+            news_data.download()
+            news_data.parse()
+            news_data.nlp()
+        except Exception as e:
+            st.error(e)
+        fetch_news_poster(news_data.top_image)  # Display poster image
+        with st.expander(news.title.text):  # Expandable section
+            st.markdown(
+                f"""<h6 style='text-align: justify;'>{news_data.summary}</h6>""",
+                unsafe_allow_html=True,
+            )  # News summary
+            # Clickable link
+            st.markdown(f"[Read full article here]({news.link.text})", unsafe_allow_html=True)
+        st.success(f"Published Date: {news.pubDate.text}")
+        if c >= news_quantity:
+            break
+def run():
+    st.title("BizNews💼: Business & Finance News")
+    image = Image.open('./Meta/newspaper.png')
+
+    col1, col2, col3 = st.columns([3, 5, 3])
+
+    with col1:
+        st.write("")
+
+    with col2:
+        st.image(image, use_column_width=False)
+
+    with col3:
+        st.write("")
+
+    category = ['--Select--', 'Trending📈 Business News', 'Live Market Prices📊']
+    cat_op = st.selectbox('Select your Category', category)
+
+    if cat_op == category[0]:
+        st.warning('Please select a Category!')
+    elif cat_op == category[1]:
+        st.subheader("✅ Here are the latest 📈 Business News for you")
+        no_of_news = st.slider('Number of News:', min_value=5, max_value=25, step=1)
+        news_list = fetch_business_news()
+        display_news(news_list, no_of_news)
+    elif cat_op == category[2]:
+        st.subheader("📊 Live Market Prices for Key Commodities & Indexes")
+        prices = fetch_live_prices()
+        for key, value in prices.items():
+            st.metric(label=key, value=value)
 
 def add_meta_tag():
     meta_tag = """
@@ -39,7 +151,7 @@ st.sidebar.image("Images/StockStreamLogo1.png", width=250,
 st.sidebar.write('''# StockStream ''')
 
 with st.sidebar: 
-        selected = option_menu("Utilities", ["Stocks Performance Comparison", "Real-Time Stock Price", "Stock Prediction", 'About'])
+        selected = option_menu("Utilities", ["Stocks Performance Comparison", "Real-Time Stock Price", "Stock Prediction","News", 'About'])
 
 start = st.sidebar.date_input(
     'Start', datetime.date(2022, 1, 1))  # start date input
@@ -367,7 +479,8 @@ elif(selected == 'Stock Prediction'):  # if user selects 'Stock Prediction'
         st.write(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
 
 # Stock Price Prediction Section Ends Here
-
+elif (selected == 'News'):
+    run()
 elif(selected == 'About'):
     st.subheader("About")
     
