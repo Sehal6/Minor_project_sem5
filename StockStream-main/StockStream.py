@@ -6,14 +6,20 @@ import pandas as pd  # pandas library
 import requests
 import plotly.express as px
 import numpy as np
+import bcrypt
 import yfinance as yf  # yfinance library
 import datetime  # datetime library
 from datetime import date
+
+from pymongo import MongoClient
 from bs4 import BeautifulSoup as soup
 from urllib.request import urlopen
 from newspaper import Article
+import requests as req
 import io
 import nltk
+from bs4 import BeautifulSoup as bs
+import plotly.graph_objects as go
 from PIL import Image
 from plotly import graph_objs as go  # plotly library
 from plotly.subplots import make_subplots
@@ -34,8 +40,323 @@ def fetch_business_news():
     sp_page = soup(rd, 'xml')
     news_list = sp_page.find_all('item')
     return news_list
+client = MongoClient("mongodb://localhost:27017")
+
+db = client['paper_trading']  # Database name
+users_collection = db['users'] 
+def callpaper():
+     # Collection name for user data
+    if __name__ == "__main__":
+        main()
+        
+                
+
+# Streamlit App
+def main():
+    # Initialize session state for login
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+        st.session_state.username = None
+        st.session_state.portfolio = {
+            'balance': 10000,
+            'stocks': {},
+            'transactions': [],
+            'pnl': 0
+        }
+
+    # Conditional rendering based on login state
+    if st.session_state.logged_in:
+        # Show Home page and logged-in menu
+        display_homepage()
+        st.sidebar.title("Menu")
+        menu = ["Home", "Portfolio & History", "Signout"]
+        choice = st.sidebar.selectbox("Select Option", menu)
+
+        if choice == "Home":
+            display_homepage()
+        elif choice == "Portfolio & History":
+            display_portfolio_and_history()
+        elif choice == "Signout":
+            signout_user()
+    else:
+        # Show Login/Signup section
+        st.sidebar.title("Menu")
+        menu = ["Login", "Signup"]
+        choice = st.sidebar.selectbox("Select Option", menu)
+
+        if choice == "Login":
+            st.subheader("Login")
+            login_user()
+
+        elif choice == "Signup":
+            st.subheader("Create a New Account")
+            signup_user()
 
 
+def entermainhome():
+    st.title(" Paper Trading Platform ")
+    menu=['Signout', 'Home']
+    choice=st.sidebar.selectbox('menu',menu)
+    if(choice=='signout'):
+        st.subheader('Signout')
+        signout()
+    else:
+        st.subheader("Welcome to the Dashboard")
+        display_homepage()
+def display_homepage():
+    st.title("Paper Trading Platform")
+    st.header('LIVE MARKET DATA')
+    stocks = show_market_data()
+    if stocks:
+        selected_stock = st.selectbox("Select a stock to trade:", stocks)
+        if selected_stock:
+            show_stock_details(selected_stock)
+            trade_stock(selected_stock)
+    
+@st.cache_data
+def fetch_trading_stocks_from_finhub():
+    api_key = "csshuo1r01qld5m1epngcsshuo1r01qld5m1epo0"  # Replace with your API key
+    url = f"https://finnhub.io/api/v1/stock/symbol?exchange=US&token={api_key}"
+
+    response = req.get(url)
+    if response.status_code == 200:
+        
+        data = response.json()
+        tickers = [stock["symbol"] for stock in data][:50]  # Fetch top 10 stock symbols
+        
+    else:
+        print("Failed to fetch stock data:", response.status_code, response.text)
+    return tickers
+    
+def show_market_data():
+    stocks = fetch_trading_stocks_from_finhub()
+    data = {}
+    for stock in stocks:
+        try:
+            ticker = yf.Ticker(stock)
+            info = ticker.history(period="1d")
+            if not info.empty:
+                data[stock] = info['Close'].iloc[-1]
+        except Exception:
+            continue
+
+    if not data:
+        st.warning("No stock data available.")
+        return None
+
+    market_df = pd.DataFrame(data.items(), columns=["Stock", "Price"])
+    st.table(market_df)
+    return list(data.keys())
+def trade_stock(ticker_symbol):
+    st.subheader(f"Trade {ticker_symbol}")
+    ticker = yf.Ticker(ticker_symbol)
+    price = ticker.history(period="1d")['Close'].iloc[-1]
+
+    action = st.radio("Action", ["Buy", "Sell"])
+    quantity = st.number_input("Quantity", min_value=1, step=1)
+
+    if st.button("Confirm"):
+        execute_trade(ticker_symbol, action, quantity, price)
+
+def save_portfolio_to_db():
+    if st.session_state.logged_in:
+        users_collection.update_one(
+            {"username": st.session_state.username},
+            {"$set": {"portfolio": st.session_state.portfolio}}
+        )
+
+
+def execute_trade(ticker, action, quantity, price):
+    portfolio = st.session_state.portfolio
+
+    if action == "Buy":
+        cost = price * quantity
+        if cost > portfolio['balance']:
+            st.error("Insufficient balance.")
+            return
+        portfolio['balance'] -= cost
+        portfolio['stocks'][ticker] = portfolio['stocks'].get(ticker, 0) + quantity
+    elif action == "Sell":
+        if ticker not in portfolio['stocks'] or portfolio['stocks'][ticker] < quantity:
+            st.error("Not enough shares to sell.")
+            return
+        revenue = price * quantity
+        portfolio['balance'] += revenue
+        portfolio['stocks'][ticker] -= quantity
+        if portfolio['stocks'][ticker] == 0:
+            del portfolio['stocks'][ticker]
+
+    portfolio['transactions'].append({
+        'ticker': ticker,
+        'action': action,
+        'quantity': quantity,
+        'price': price,
+        'total': price * quantity,
+        'timestamp': str(pd.Timestamp.now())
+    })
+    update_pnl()
+    save_portfolio_to_db()
+
+    st.success(f"Successfully executed {action} of {quantity} shares of {ticker} at ${price:.2f}.")
+
+
+def update_pnl():
+    portfolio = st.session_state.portfolio
+    portfolio_value = 0
+    for ticker, quantity in portfolio['stocks'].items():
+        try:
+            price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
+            portfolio_value += price * quantity
+        except Exception:
+            continue
+    portfolio['pnl'] = portfolio_value - (10000 - portfolio['balance'])
+    
+    
+def display_portfolio_and_history():
+    st.title("Portfolio & History")
+
+    portfolio = st.session_state.portfolio
+    st.write(f"**Balance:** ${portfolio['balance']:.2f}")
+    st.write(f"**PnL:** ${portfolio['pnl']:.2f}")
+
+    st.subheader("Holdings")
+    if portfolio['stocks']:
+        for stock, qty in portfolio['stocks'].items():
+            st.write(f"{stock}: {qty} shares")
+    else:
+        st.write("No holdings.")
+
+    st.subheader("Transaction History")
+    if portfolio['transactions']:
+        transactions_df = pd.DataFrame(portfolio['transactions'])
+        st.table(transactions_df)
+    else:
+        st.write("No transactions yet.")
+
+
+# Show detailed stock analysis
+def show_stock_details(ticker_symbol):
+    st.subheader(f"Details for {ticker_symbol}")
+
+    # Fetch stock info and history
+    ticker = yf.Ticker(ticker_symbol)
+    stock_info = ticker.info
+    stock_history = ticker.history(period='6mo')  # Last 6 months
+
+    # Display stock details
+    st.write("**Stock Info:**")
+    st.write(f"**Name:** {stock_info.get('shortName', 'N/A')}")
+    st.write(f"**Sector:** {stock_info.get('sector', 'N/A')}")
+    st.write(f"**Market Cap:** {stock_info.get('marketCap', 'N/A'):,}")
+    st.write(f"**Current Price:** {stock_info.get('currentPrice', 'N/A'):,}")
+
+    # Plot historical chart using Plotly
+    st.write("**Historical Price Chart:**")
+    if not stock_history.empty:
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(
+            x=stock_history.index,
+            open=stock_history['Open'],
+            high=stock_history['High'],
+            low=stock_history['Low'],
+            close=stock_history['Close'],
+            name='Price'
+        ))
+        fig.update_layout(
+            title=f"{ticker_symbol} Price History",
+            xaxis_title="Date",
+            yaxis_title="Price (USD)",
+            xaxis_rangeslider_visible=True,  # Enable zoom and pan
+        )
+        st.plotly_chart(fig)
+    else:
+        st.warning(f"No historical data available for {ticker_symbol}.")
+def show_portfolio():
+    balance=user_portfolio['balance']
+    stocks=user_portfolio['stocks']
+    pnl=user_portfolio['pnl']
+    st.write(f"**Balance:** ${balance:,.2f}")
+    st.write("**Stocks Held:**")
+    for stock, qty in stocks.items():
+        st.write(f"{stock}: {qty} shares")
+    st.write(f"**Profit and Loss (PnL):** ${pnl:,.2f}")
+    if stocks:
+        stock_values = {stock: qty * yf.Ticker(stock).history(period="1d")['Close'].iloc[-1]
+                        for stock, qty in stocks.items()}
+        fig,ax=plt.subplots()
+        ax.bar(stock_values.keys(),stock_values.values(),color='skyblue')
+        ax.set_title('Portfolio Allocation ')
+        ax.set_xlabel("Stock")
+        ax.set_ylabel("Value (USD)")
+        st.pyplot(fig)
+def login_user():
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    
+    if st.button("Login"):
+        user = users_collection.find_one({"username": username})
+        
+        if user:
+            if bcrypt.checkpw(password.encode('utf-8'), user['password']):
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.session_state.portfolio = user.get('portfolio', {
+                    'balance': 10000,
+                    'stocks': {},
+                    'transactions': [],
+                    'pnl': 0
+                })
+                st.success(f"Welcome back, {username}!")
+            else:
+                st.error("Incorrect password.")
+        else:
+            st.error("Username does not exist.")
+
+
+def signup_user():
+    username = st.text_input("Create Username")
+    password = st.text_input("Create Password", type="password")
+    confirm_password = st.text_input("Confirm Password", type="password")
+    
+    if st.button("Signup"):
+        if password == confirm_password:
+            if users_collection.find_one({"username": username}):
+                st.error("Username already exists. Please try another.")
+            else:
+                hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+                users_collection.insert_one({
+                    "username": username,
+                    "password": hashed_password,
+                    "portfolio": {
+                        'balance': 10000,
+                        'stocks': {},
+                        'transactions': [],
+                        'pnl': 0
+                    }
+                })
+                st.success("Account created successfully!")
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.session_state.portfolio = {
+                    'balance': 10000,
+                    'stocks': {},
+                    'transactions': [],
+                    'pnl': 0
+                }
+        else:
+            st.error("Passwords do not match.")
+
+
+def signout_user():
+    # Reset session state
+    st.session_state.logged_in = False
+    st.session_state.username = None
+    st.success("You have been signed out successfully!")
+    #st.rerun()  # Redirect to Login/Signup
+
+
+
+ 
 def fetch_news_search_topic(topic):
     site = 'https://news.google.com/rss/search?q={}'.format(topic)
     op = urlopen(site)
@@ -151,7 +472,7 @@ st.sidebar.image("Images/StockStreamLogo1.png", width=250,
 st.sidebar.write('''# StockStream ''')
 
 with st.sidebar: 
-        selected = option_menu("Utilities", ["Stocks Performance Comparison", "Real-Time Stock Price", "Stock Prediction","News", 'About'])
+        selected = option_menu("Utilities", ["Stocks Performance Comparison", "Real-Time Stock Price", "Stock Prediction","Paper Trading & Portfolio","News", 'About'])
 
 start = st.sidebar.date_input(
     'Start', datetime.date(2022, 1, 1))  # start date input
@@ -326,6 +647,8 @@ elif(selected == 'Real-Time Stock Price'):  # if user selects 'Real-Time Stock P
 # Real-Time Stock Price Section Ends Here
 
 # Stock Price Prediction Section Starts Here
+elif(selected=='Paper Trading & Portfolio'):
+    callpaper()
 elif(selected == 'Stock Prediction'):  # if user selects 'Stock Prediction'
     stocks_csv_path = 'StockStreamTickersData.csv'  # Replace with your CSV file path
     stocks_df = pd.read_csv(stocks_csv_path)
@@ -493,5 +816,3 @@ elif(selected == 'About'):
     """, unsafe_allow_html=True)
     st.image("Images/R.png", caption="StockStream - Visualize, Predict, and Analyze", width=300)
     st.markdown('<p class="big-font">StockStream is a web application that allows users to visualize Stock Performance Comparison, Real-Time Stock Prices and Stock Price Prediction. This application is built by Daksh Jain , Sehal Saxena and Mayer Goyal students of Jaypee Institute of Information Technology as their minor project .  </p>', unsafe_allow_html=True)
- 
- 
