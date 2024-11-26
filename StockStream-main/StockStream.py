@@ -395,17 +395,6 @@ def fetch_live_prices():
             live_data[name] = "Data Unavailable"
     return live_data
 
-def fetch_news_poster(poster_link):
-    try:
-        u = urlopen(poster_link)
-        raw_data = u.read()
-        image = Image.open(io.BytesIO(raw_data))
-        st.image(image, use_column_width=True)
-    except:
-        image = Image.open('./Meta/no_image.jpg')
-        st.image(image, use_column_width=True)
-
-
 def display_news(list_of_news, news_quantity):
     c = 0
     for news in list_of_news:
@@ -418,7 +407,6 @@ def display_news(list_of_news, news_quantity):
             news_data.nlp()
         except Exception as e:
             st.error(e)
-        fetch_news_poster(news_data.top_image)  # Display poster image
         with st.expander(news.title.text):  # Expandable section
             st.markdown(
                 f"""<h6 style='text-align: justify;'>{news_data.summary}</h6>""",
@@ -473,10 +461,10 @@ add_meta_tag()
 
 # Sidebar Section Starts Here
 today = date.today()  # today's date
-st.write('''# StockStream ''')  # title
+st.write('''# StockSmart ''')  # title
 st.sidebar.image("Images/StockStreamLogo1.png", width=250,
                  use_column_width=False)  # logo
-st.sidebar.write('''# StockStream ''')
+st.sidebar.write('''# StockSmart ''')
 
 with st.sidebar: 
         selected = option_menu("Utilities", ["Stocks Performance Comparison", "Real-Time Stock Price", "Stock Prediction","Paper Trading & Portfolio","News", 'About'])
