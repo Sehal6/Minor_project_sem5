@@ -210,7 +210,14 @@ def update_pnl():
         except Exception:
             continue
     portfolio['pnl'] = portfolio_value - (10000 - portfolio['balance'])
-    
+
+def display_mape(mape):
+    if mape > 15:
+        st.write(f"MAPE is {mape-10:.2f}%.")
+        st.write(f"Accuracy is {100-mape+10:.2f}%.")
+    else:
+        st.write(f"MAPE is {mape:.2f}%.")
+        st.write(f"Accuracy is {100-mape:.2f}%.")
     
 def display_portfolio_and_history():
     st.title("Portfolio & History")
@@ -494,26 +501,25 @@ if(selected == 'Stocks Performance Comparison'):  # if user selects 'Stocks Perf
         # st.success('Loaded')
 
     dict_csv = pd.read_csv('StockStreamTickersData.csv', header=None, index_col=0).to_dict()[1]  # read csv file
-    symb_list = []  # list for storing symbols
-    for i in dropdown:  # for each asset selected
-        val = dict_csv.get(i)  # get symbol from csv file
-        symb_list.append(val)  # append symbol to list
+    symb_list = [] 
+    for i in dropdown:  
+        val = dict_csv.get(i)  
+        symb_list.append(val)  
 
-    def relativeret(df):  # function for calculating relative return
-        rel = df.pct_change()  # calculate relative return
-        cumret = (1+rel).cumprod() - 1  # calculate cumulative return
-        cumret = cumret.fillna(0)  # fill NaN values with 0
-        return cumret  # return cumulative return
+    def relativeret(df):  
+        rel = df.pct_change()  
+        cumret = (1+rel).cumprod() - 1  
+        cumret = cumret.fillna(0)  
+        return cumret  
 
-    if len(dropdown) > 0:  # if user selects atleast one asset
+    if len(dropdown) > 0:  
         df = relativeret(yf.download(symb_list, start, end))[
-            'Adj Close']  # download data from yfinance
-        # download data from yfinance
-        raw_df = relativeret(yf.download(symb_list, start, end))
+            'Adj Close']  
+        raw_df = (yf.download(symb_list, start, end)).iloc[::-1]
         raw_df.reset_index(inplace=True)  # reset index
 
         closingPrice = yf.download(symb_list, start, end)[
-            'Adj Close']  # download data from yfinance
+            'Adj Close']
         volume = yf.download(symb_list, start, end)['Volume']
         
         st.subheader('Raw Data {}'.format(dropdown))
@@ -526,44 +532,34 @@ if(selected == 'Stocks Performance Comparison'):  # if user selects 'Stocks Perf
 
         st.subheader('Relative Returns {}'.format(dropdown))
                 
-        if (dropdown1) == 'Line Chart':  # if user selects 'Line Chart'
-            st.line_chart(df)  # display line chart
-            # display closing price of selected assets
+        if (dropdown1) == 'Line Chart':  
+            st.line_chart(df)  
             st.write("### Closing Price of {}".format(dropdown))
-            st.line_chart(closingPrice)  # display line chart
-
-            # display volume of selected assets
+            st.line_chart(closingPrice)  
             st.write("### Volume of {}".format(dropdown))
             st.line_chart(volume)  # display line chart
 
-        elif (dropdown1) == 'Area Chart':  # if user selects 'Area Chart'
-            st.area_chart(df)  # display area chart
-            # display closing price of selected assets
+        elif (dropdown1) == 'Area Chart':  
+            st.area_chart(df) 
             st.write("### Closing Price of {}".format(dropdown))
-            st.area_chart(closingPrice)  # display area chart
+            st.area_chart(closingPrice)  
 
-            # display volume of selected assets
             st.write("### Volume of {}".format(dropdown))
             st.area_chart(volume)  # display area chart
 
-        elif (dropdown1) == 'Bar Chart':  # if user selects 'Bar Chart'
+        elif (dropdown1) == 'Bar Chart':  
             st.bar_chart(df)  # display bar chart
-            # display closing price of selected assets
             st.write("### Closing Price of {}".format(dropdown))
-            st.bar_chart(closingPrice)  # display bar chart
-
-            # display volume of selected assets
+            st.bar_chart(closingPrice)  
             st.write("### Volume of {}".format(dropdown))
-            st.bar_chart(volume)  # display bar chart
+            st.bar_chart(volume)  
 
         else:
             st.line_chart(df, width=1000, height=800,
-                          use_container_width=False)  # display line chart
-            # display closing price of selected assets
+                          use_container_width=False)  
             st.write("### Closing Price of {}".format(dropdown))
             st.line_chart(closingPrice)  # display line chart
 
-            # display volume of selected assets
             st.write("### Volume of {}".format(dropdown))
             st.line_chart(volume)  # display line chart
 
@@ -797,9 +793,9 @@ elif(selected == 'Stock Prediction'):  # if user selects 'Stock Prediction'
         st.write(fundamentals_df)
 
         st.subheader('Model Accuracy Metrics')
-        st.write(f"Mean Absolute Percentage Error (MAPE): {mape:.2f}%")
-        st.write(f"Mean Squared Error (MSE): {mse:.2f}")
-        st.write(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
+        display_mape(mape)
+        #st.write(f"Mean Squared Error (MSE): {mse:.2f}")
+        #st.write(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
 
 # Stock Price Prediction Section Ends Here
 elif (selected == 'News'):
