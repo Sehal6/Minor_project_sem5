@@ -99,12 +99,14 @@ def entermainhome():
     choice=st.sidebar.selectbox('menu',menu)
     if(choice=='signout'):
         st.subheader('Signout')
-        signout()
+        #signout()
     else:
         st.subheader("Welcome to the Dashboard")
         display_homepage()
 def display_homepage():
     st.title("Paper Trading Platform")
+    st.write('Practice your trading strategies without financial risk using the paper trading feature. Simulate real stock trading scenarios to test your skills and understand market behavior in a risk-free environment.')
+    st.write('Also Manage and monitor your investments with ease. The portfolio feature provides a comprehensive overview of your assets, performance metrics, and profit/loss analysis, empowering users to track their financial growth effectively')
     st.header('LIVE MARKET DATA')
     stocks = show_market_data()
     if stocks:
@@ -393,10 +395,10 @@ def fetch_news_poster(poster_link):
         u = urlopen(poster_link)
         raw_data = u.read()
         image = Image.open(io.BytesIO(raw_data))
-        st.image(image, use_column_width=True)
+        st.image(image, use_container_width=True)
     except:
         image = Image.open('./Meta/no_image.jpg')
-        st.image(image, use_column_width=True)
+        st.image(image, use_container_width=True)
 
 
 def display_news(list_of_news, news_quantity):
@@ -432,7 +434,7 @@ def run():
         st.write("")
 
     with col2:
-        st.image(image, use_column_width=False)
+        st.image(image, use_container_width=False)
 
     with col3:
         st.write("")
@@ -468,7 +470,7 @@ add_meta_tag()
 today = date.today()  # today's date
 st.write('''# StockStream ''')  # title
 st.sidebar.image("Images/StockStreamLogo1.png", width=250,
-                 use_column_width=False)  # logo
+                 use_container_width=False)  # logo
 st.sidebar.write('''# StockStream ''')
 
 with st.sidebar: 
@@ -487,6 +489,7 @@ if(selected == 'Stocks Performance Comparison'):  # if user selects 'Stocks Perf
     st.subheader("Stocks Performance Comparison")
     tickers = stock_df["Company Name"]
     # dropdown for selecting assets
+    st.write('This feature allows users to compare the stock prices of multiple companies side by side. It offers interactive charts and metrics, helping users analyze historical and real-time data to make informed investment decisions.')
     dropdown = st.multiselect('Pick your assets', tickers)
 
     with st.spinner('Loading...'):  # spinner while loading
@@ -574,6 +577,7 @@ if(selected == 'Stocks Performance Comparison'):  # if user selects 'Stocks Perf
 # Real-Time Stock Price Section Starts Here
 elif(selected == 'Real-Time Stock Price'):  # if user selects 'Real-Time Stock Price'
     st.subheader("Real-Time Stock Price")
+    st.write('Stay updated with the latest stock market trends through real-time price tracking. This feature ensures that users have access to up-to-the-second data for monitoring market fluctuations and executing timely trades.')
     tickers = stock_df["Company Name"]  # get company names from csv file
     # dropdown for selecting company
     a = st.selectbox('Pick a Company', tickers)
@@ -652,7 +656,8 @@ elif(selected=='Paper Trading & Portfolio'):
 elif(selected == 'Stock Prediction'):  # if user selects 'Stock Prediction'
     stocks_csv_path = 'StockStreamTickersData.csv'  # Replace with your CSV file path
     stocks_df = pd.read_csv(stocks_csv_path)
-
+    st.subheader('Stock Prediction')
+    st.write('With the power of data analytics and machine learning to forecast stock price trends. This feature uses historical data, market indicators, and advanced algorithms to predict potential future price movements, enabling users to make strategic investment decisions')
     # Check if required columns exist in the CSV
     if 'Company Name' not in stocks_df.columns or 'Symbol' not in stocks_df.columns:
         st.error("The CSV file must have 'Stock Name' and 'Stock Code' columns.")
@@ -803,6 +808,7 @@ elif(selected == 'Stock Prediction'):  # if user selects 'Stock Prediction'
 
 # Stock Price Prediction Section Ends Here
 elif (selected == 'News'):
+    st.write('Stay ahead of the curve with real-time news updates tailored to the stock market. This feature fetches relevant financial news, insights, and market updates dynamically, keeping users informed about events that could impact their investments.')
     run()
 elif(selected == 'About'):
     st.subheader("About")

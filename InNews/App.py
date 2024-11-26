@@ -41,10 +41,10 @@ def fetch_news_poster(poster_link):
         u = urlopen(poster_link)
         raw_data = u.read()
         image = Image.open(io.BytesIO(raw_data))
-        st.image(image, use_column_width=True)
+        st.image(image, use_container_width=True)
     except:
         image = Image.open('./Meta/no_image.jpg')
-        st.image(image, use_column_width=True)
+        st.image(image, use_container_width=True)
 
 
 def display_news(list_of_news, news_quantity):
@@ -80,7 +80,7 @@ def run():
         st.write("")
 
     with col2:
-        st.image(image, use_column_width=False)
+        st.image(image, use_container_width=False)
 
     with col3:
         st.write("")
