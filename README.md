@@ -52,3 +52,4 @@ at http://localhost:3000
 
 ## Contributions
 Contributions are welcome! Please fork the repo, make your changes, and submit a pull request.
+It is a project worked with passion and aim !
